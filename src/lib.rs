@@ -1,5 +1,9 @@
 mod utils;
 
+use std::borrow::Borrow;
+use std::cell::{Ref, RefCell};
+
+use std::rc::Rc;
 use cfg_if::cfg_if;
 use js_sys::ArrayBuffer;
 use wasm_bindgen::prelude::*;
@@ -7,7 +11,7 @@ use log::{info, trace, warn, error};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{AudioBuffer, AudioContext, OscillatorType, Request, RequestInit, RequestMode, Response, window};
+use web_sys::{AudioBuffer, AudioBufferSourceNode, AudioContext, OscillatorType, Request, RequestInit, RequestMode, Response, window};
 
 cfg_if! {
     if #[cfg(feature = "console_log")] {
@@ -25,6 +29,13 @@ cfg_if! {
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
+
+
+thread_local! {
+    static ON_CLICK:RefCell<Option<Closure<dyn FnMut(web_sys::MouseEvent)>>> = RefCell::new(None);
+
+}
+
 pub fn midi_to_freq(note: u8) -> f32 {
     27.5 * 2f32.powf((note as f32 - 21.0) / 12.0)
 }
@@ -40,10 +51,83 @@ pub async fn start() -> Result<(), JsValue> {
     init_log();
 
 
+    let window = web_sys::window().unwrap();
+    let document = window.document().unwrap();
+
+    let ctx = Rc::new(web_sys::AudioContext::new()?);
+
+    let repinique = Repinique::new(Rc::clone(&ctx)).await?;
+
+    let mut count = Rc::new(RefCell::new(0));
+
+
+    ON_CLICK.with(|ref_cell| {
+        let closure_on_click = Closure::wrap(Box::new(move |_e: web_sys::MouseEvent| {
+            trace!(">>>>>>>>>>>>>>>>>>click>>>>>>>>>>>>>>>>>>>");
+            repinique.play();
+
+            match document.get_element_by_id("count_div") {
+                Some(element) => {
+                    let mut ref_mut = count.borrow_mut();
+                    *ref_mut +=1;
+
+                    element.set_inner_html(format!("{}", ref_mut).as_str());
+                }
+                _ => {
+                    trace!("no msg");
+                }
+            }
+
+        }) as Box<dyn FnMut(web_sys::MouseEvent)>);
+
+
+        if web_sys::window().unwrap().add_event_listener_with_callback("touchstart", &closure_on_click.as_ref().unchecked_ref()).is_err(){
+            panic!("window.add_event_listener_with_callback click")
+        }
+
+        ref_cell.borrow_mut().replace(closure_on_click);
+    });
+
     Ok(())
 }
 
 
+
+pub struct Repinique {
+    ctx:Rc<AudioContext>,
+    audio_buffer: AudioBuffer,
+}
+
+
+
+impl Repinique{
+
+
+    pub async fn new(ctx:Rc<AudioContext>) -> Result<Repinique, JsValue> {
+        // let source = ctx.create_buffer_source()?;
+        let array_buffer = download_content_1(String::from("http://192.168.0.92:7777/sounds/repinique_0.mp3")).await?;
+
+        let decoded_buffer = JsFuture::from(ctx.decode_audio_data(&array_buffer)?).await?;
+
+
+
+
+        Ok(Self {
+            ctx,
+            audio_buffer: decoded_buffer.dyn_into()?
+        })
+    }
+
+    pub fn play(&self){
+        let  source =  AudioBufferSourceNode::new(&self.ctx).expect("");
+        source.set_buffer(Some(&self.audio_buffer));
+        source.connect_with_audio_node(&self.ctx.destination());
+        source.start();
+
+        source.start();
+        trace!("playing repinique");
+    }
+}
 
 #[wasm_bindgen]
 pub async fn play_s1() -> Result<(), JsValue>  {
@@ -51,7 +135,7 @@ pub async fn play_s1() -> Result<(), JsValue>  {
     let ctx = web_sys::AudioContext::new()?;
     let source = ctx.create_buffer_source()?;
 
-    let array_buffer = download_content_1(String::from("http://localhost:7777/sounds/repinique_0.mp3")).await?;
+    let array_buffer = download_content_1(String::from("http://http://192.168.0.92:7777/sounds/repinique_0.mp3")).await?;
     let decoded_buffer = JsFuture::from(ctx.decode_audio_data(&array_buffer)?).await?;
     trace!("playing s2 decoded_buffer={:?}", decoded_buffer);
     let audio_buffer:AudioBuffer = decoded_buffer.dyn_into()?;

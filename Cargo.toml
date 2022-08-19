@@ -36,6 +36,15 @@ wee_alloc = { version = "0.4.5", optional = true }
 [dependencies.web-sys]
 version = "0.3.4"
 features = [
+    'Document',
+    'Element',
+    'EventTarget',
+    'HtmlCanvasElement',
+    'HtmlElement',
+    'HtmlInputElement',
+    'HtmlImageElement',
+    'MouseEvent',
+
     'AudioContext',
     'AudioDestinationNode',
     'AudioNode',
@@ -44,8 +53,8 @@ features = [
     'OscillatorNode',
     'OscillatorType',
     'AudioBufferSourceNode',
-    'AudioBuffer',
     'Window',
+    'AudioBuffer',
 
     "Headers",
     "Request",
